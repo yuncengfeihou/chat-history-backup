@@ -37,6 +37,7 @@ import {
 
 // 群组相关函数 (路径可能需要根据 ST 版本调整, 且确保函数已导出)
 // 如果 openGroupById 和 createNewGroupChat 不在 script.js, 需要从这里导入
+// 确保这些函数在你的 SillyTavern 版本中确实存在于 group-chats.js 并被导出
 import {
     openGroupById,
     createNewGroupChat,
@@ -47,6 +48,7 @@ import { debounce } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { POPUP_TYPE, callGenericPopup } from '../../../popup.js';
 
+// 假设 localforage 和 toastr 在 ST 环境中全局可用
 
 // ==========================================================
 // 2. 插件常量与设置
@@ -130,10 +132,11 @@ async function performBackup() {
     }
 
     const context = getContext(); // 获取当前 SillyTavern 上下文
-    let sourceType: 'character' | 'group' | null = null;
-    let sourceId: number | string | null = null;
-    let sourceName: string = '';
-    let chatName: string = '';
+    // 移除 TypeScript 类型注解
+    let sourceType = null;
+    let sourceId = null;
+    let sourceName = '';
+    let chatName = '';
 
     // --- 确定备份来源：角色或群组 ---
     if (context.selected_group) { // 优先判断群组
@@ -357,7 +360,7 @@ async function displayBackups() {
  * @returns {string} 转义后的安全字符串
  */
 function escapeHtml(unsafe) {
-    if (!unsafe) return '';
+    if (typeof unsafe !== 'string') return ''; // 确保输入是字符串
     return unsafe
          .replace(/&/g, "&")
          .replace(/</g, "<")
@@ -473,8 +476,16 @@ async function restoreBackup(backupIndex) {
          // --- 步骤 c: 注入备份数据 ---
          console.log(`${extensionName}: Injecting backup data...`);
          // **直接修改全局 chat 数组**: 清空并填充备份内容
+         // 确保 backupChatArray 是一个数组
+         if (!Array.isArray(backupChatArray)) {
+             throw new Error('Backup chat data is not an array.');
+         }
          chat.splice(0, chat.length, ...backupChatArray);
          // **直接修改全局 chat_metadata 对象**: 清空并填充备份内容
+         // 确保 backupMetadata 是一个对象
+         if (typeof backupMetadata !== 'object' || backupMetadata === null) {
+             throw new Error('Backup metadata is not an object.');
+         }
          Object.keys(chat_metadata).forEach(key => delete chat_metadata[key]); // 清空现有元数据
          Object.assign(chat_metadata, backupMetadata); // 合并备份的元数据
          console.log(`${extensionName}: Data injected. Chat length: ${chat.length}`);
@@ -594,7 +605,8 @@ jQuery(async () => {
     // **关键: 使用事件委托**为动态生成的恢复按钮绑定 click 事件
     // 监听父容器 '#global-backup-list-container' 上的点击事件
     // 但只处理来源是 'button.restore-backup' 的点击
-    $('#global-backup-list-container').on('click', 'button.restore-backup', function () {
+    // 注意：jQuery 选择器中的 #id 应该是唯一的，确保你的 backup_display.html 中只有一个 id="global-backup-list-container"
+    $('body').on('click', '#global-backup-list-container button.restore-backup', function () {
         // 从被点击按钮的 data-backup-index 属性获取索引
         const backupIndex = parseInt($(this).data('backup-index'), 10);
         // 检查索引是否有效
@@ -607,6 +619,7 @@ jQuery(async () => {
             toastr.error(t('无法识别的备份项目。'));
         }
     });
+
 
     // --- 4. 页面加载时显示初始备份列表 ---
     displayBackups();
@@ -622,19 +635,28 @@ jQuery(async () => {
     ];
     // 为列表中的每个事件类型注册监听器，调用 triggerBackup (防抖版本)
     eventsToTriggerBackup.forEach(eventType => {
-        eventSource.on(eventType, triggerBackup);
+        // 检查 event_types 对象中是否存在该事件类型，以防版本差异
+        if (event_types[eventType]) {
+            eventSource.on(event_types[eventType], triggerBackup);
+        } else {
+            console.warn(`${extensionName}: Event type "${eventType}" not found in event_types. Skipping listener.`);
+        }
     });
 
     // (可选) 监听聊天切换事件，可以取消待处理的备份并更新状态
-     eventSource.on(event_types.CHAT_CHANGED, () => {
-         // 如果 debouncedBackup 对象存在 cancel 方法 (来自 lodash/underscore debounce)
-         if (typeof debouncedBackup.cancel === 'function') {
-             debouncedBackup.cancel(); // 取消可能正在等待执行的备份
-             console.debug(`${extensionName}: Chat changed, cancelled pending backup.`);
-         }
-         // 聊天切换后也更新状态显示
-         updateBackupStatus();
-     });
+     if (event_types.CHAT_CHANGED) {
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            // 如果 debouncedBackup 对象存在 cancel 方法 (来自 lodash/underscore debounce)
+            if (typeof debouncedBackup.cancel === 'function') {
+                debouncedBackup.cancel(); // 取消可能正在等待执行的备份
+                console.debug(`${extensionName}: Chat changed, cancelled pending backup.`);
+            }
+            // 聊天切换后也更新状态显示
+            updateBackupStatus();
+        });
+     } else {
+         console.warn(`${extensionName}: Event type "CHAT_CHANGED" not found in event_types. Skipping chat change listener.`);
+     }
 
 
     // --- 6. 初始化完成日志 ---
