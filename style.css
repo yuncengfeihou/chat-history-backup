@@ -1,111 +1,81 @@
-/* public/extensions/third-party/global-chat-history/style.css */
+/* public/extensions/third-party/global-chat-backup/style.css */
 
-/* 设置区域内边距和背景 */
 #global-backup-settings .inline-drawer-content {
     padding: 15px;
     background-color: var(--SmartThemeBodyColor);
     border-radius: 0 0 5px 5px;
 }
 
-/* 启用/禁用标签样式 */
 #global-backup-settings label {
     display: flex;
     align-items: center;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     cursor: pointer;
 }
 #global-backup-settings label input[type="checkbox"] {
     margin-right: 8px;
 }
+#global-backup-settings label input[type="number"] {
+    margin-left: 5px;
+    width: 60px;
+}
 
-/* 状态文本样式 */
-.backup-status {
+#global-backup-status {
     font-size: 0.85em;
     color: var(--SmartThemeSubtleColor);
-    margin-top: 5px;
-    margin-bottom: 10px;
-    min-height: 1.2em; /* 防止文本消失时布局跳动 */
+    margin-top: 8px;
+    min-height: 1.2em;
 }
 
-/* 控制按钮容器 */
-.backup-controls {
-    margin-bottom: 15px;
-    display: flex;
-    gap: 10px; /* 按钮间距 */
-}
-
-/* 控制按钮样式 */
-.backup-controls .action_button {
-    padding: 5px 8px;
-    font-size: 0.9em;
-}
-.backup-controls .action_button::before {
-    margin-right: 4px; /* 图标和文字间距 */
-}
-
-/* 备份列表容器样式 */
-.backup-list-container {
-    max-height: 300px; /* 限制高度，超出则滚动 */
+#global-backup-list-container {
+    margin-top: 15px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    padding-top: 10px;
+    max-height: 300px; /* Limit height and allow scrolling */
     overflow-y: auto;
-    border: 1px solid var(--SmartThemeBorderColor);
+}
+
+.global-backup-entry {
+    border: 1px solid var(--SmartThemeChatBlockColor);
+    background-color: var(--SmartThemeChatBlockColor);
     padding: 10px;
-    border-radius: 4px;
-    background-color: var(--SmartThemeChatColor); /* 列表背景色 */
-}
-
-/* 单个备份项目样式 */
-.backup-item {
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-    padding: 10px 0;
     margin-bottom: 10px;
-}
-/* 移除最后一个项目的下边框和边距 */
-.backup-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
+    border-radius: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start; /* Align items to the top */
+    gap: 10px; /* Space between content and button */
 }
 
-/* 备份信息行样式 */
-.backup-info {
-    display: flex;
-    flex-wrap: wrap; /* 允许换行 */
-    gap: 5px 10px; /* 行间距和列间距 */
+.global-backup-entry-info {
+    flex-grow: 1; /* Allow info to take available space */
+    overflow: hidden; /* Hide overflow */
+    word-wrap: break-word; /* Allow long words to break */
+}
+
+.global-backup-entry-info .backup-details {
     font-size: 0.9em;
+    color: var(--SmartThemeSubtleColor);
     margin-bottom: 5px;
 }
 
-.backup-source { font-weight: bold; }
-.backup-chat { color: var(--SmartThemeSubtleColor); font-style: italic; }
-.backup-time { /* 可以添加特定样式，如加粗 */ }
-.backup-id { color: var(--SmartThemeSubtleColor); font-size: 0.9em; }
-
-/* 消息预览样式 */
-.backup-preview {
-    font-size: 0.9em;
-    color: var(--SmartThemeChatColorSecondary); /* 次要文字颜色 */
-    margin-bottom: 8px;
-    white-space: pre-wrap; /* 保留空格和换行 */
-    word-break: break-word; /* 防止长单词溢出 */
-    max-height: 60px; /* 限制预览高度 */
-    overflow: hidden; /* 隐藏溢出内容 */
-    text-overflow: ellipsis; /* 显示省略号 */
-    /* 如果需要严格限制行数 (兼容性注意) */
-    /* display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical; */
-}
-
-/* 恢复按钮区域样式 */
-.backup-actions {
-    text-align: right; /* 按钮靠右 */
-}
-
-/* 恢复按钮样式 */
-.backup-actions .restore-backup {
-    padding: 4px 8px;
+.global-backup-entry-info .backup-preview {
     font-size: 0.85em;
+    max-height: 60px; /* Limit preview height */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3; /* Show max 3 lines */
+    -webkit-box-orient: vertical;
+    white-space: normal; /* Allow wrapping */
+    color: var(--SmartThemeChatColor);
+    margin-top: 5px;
+    margin-bottom: 5px; /* Add some space below preview */
 }
-.backup-actions .restore-backup i {
-    margin-right: 4px; /* 图标和文字间距 */
+
+
+.global-backup-entry button.restore-backup {
+    flex-shrink: 0; /* Prevent button from shrinking */
+    margin-left: 10px; /* Space before button */
+    align-self: center; /* Center button vertically */
 }
