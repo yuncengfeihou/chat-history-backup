@@ -1,6 +1,6 @@
 {
     "display_name": "Chat History Backup2.2",
-    "loading_order": 20,
+    "loading_order": 5,
     "requires": [],
     "optional": [],
     "js": "index.js",
