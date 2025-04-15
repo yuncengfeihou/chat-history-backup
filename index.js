@@ -21,7 +21,6 @@ import {
 } from '../../../../script.js';
 
 import { debounce } from '../../../utils.js';
-import { faviconCache } from '../../../../script.js';
 
 // 插件名称和常量
 const extensionName = "chat-history-backup";
