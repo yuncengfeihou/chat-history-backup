@@ -26,7 +26,7 @@ const deepCopy = (obj) => {
 };
 
 // 扩展名和设置初始化
-const PLUGIN_NAME = 'chat-auto-backup';
+const PLUGIN_NAME = 'chat-history-backup';
 const DEFAULT_SETTINGS = {
     maxBackupsPerChat: 3,  // 每个聊天保存的最大备份数量
     backups: {},           // 保存的备份数据：{ chatKey: [backup1, backup2, ...] }
