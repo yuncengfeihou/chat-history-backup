@@ -1,0 +1,14 @@
+#backup-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 10px 0;
+}
+
+.backup-item {
+    padding: 10px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.restore-btn {
+    margin-top: 5px;
+}
