@@ -1,0 +1,25 @@
+<div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+        <b>聊天历史自动保存与恢复</b>
+        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+        <div class="chat_history_settings">
+            <label class="checkbox_label">
+                <input type="checkbox" id="chat_history_enabled" />
+                <span>启用自动保存</span>
+            </label>
+            <label for="chat_history_max_backups">每个聊天保存数量:</label>
+            <input type="number" id="chat_history_max_backups" min="1" max="10" value="3" />
+            <div class="chat_history_status" id="chat_history_status">准备就绪</div>
+            <hr class="sysHR">
+        </div>
+        
+        <div class="chat_history_records" id="chat_history_records">
+            <div class="backup_records_title">保存的记录</div>
+            <div id="chat_history_records_container">
+                <div class="no_records_message">暂无保存的聊天记录</div>
+            </div>
+        </div>
+    </div>
+</div>
