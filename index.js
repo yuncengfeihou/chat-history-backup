@@ -71,16 +71,16 @@ jQuery(async () => {
     const settingsHtml = `
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>${t('Chat History Backup')}</b>
+            <b>${t(['Chat History Backup'])}</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
             <label>
                 <input type="checkbox" id="chat-backup-enabled" ${extension_settings[extensionName].isEnabled ? 'checked' : ''}>
-                ${t('Enable Auto Backup')}
+                ${t(['Enable Auto Backup'])}
             </label>
             <div id="backup-list"></div>
-            <button id="refresh-backups" class="menu_button">${t('Refresh Backups')}</button>
+            <button id="refresh-backups" class="menu_button">${t(['Refresh Backups'])}</button>
         </div>
     </div>`;
     $('#extensions_settings').append(settingsHtml);
@@ -100,7 +100,7 @@ jQuery(async () => {
         const { type, data } = event.data;
         
         if (type === 'backupComplete') {
-            toastr.success(t('Backup completed successfully'));
+            toastr.success(t(['Backup completed successfully']));
         } else if (type === 'backupList') {
             const backupList = $('#backup-list').empty();
             data.forEach(backup => {
@@ -108,7 +108,7 @@ jQuery(async () => {
                 <div class="backup-item">
                     <p>${new Date(backup.timestamp).toLocaleString()}</p>
                     <p>${backup.chat[backup.chat.length - 1].mes.substring(0, 100)}...</p>
-                    <button class="restore-btn" data-backup='${JSON.stringify(backup)}'>${t('Restore')}</button>
+                    <button class="restore-btn" data-backup='${JSON.stringify(backup)}'>${t(['Restore'])}</button>
                 </div>`);
             });
             
