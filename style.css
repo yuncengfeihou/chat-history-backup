@@ -1,91 +1,99 @@
-/* public/extensions/third-party/chat-history-backup/style.css */
+/* 聊天自动备份插件样式 */
 
-#chat-history-backup-settings .inline-drawer-content {
-    padding: 10px 15px;
-    background-color: var(--SmartThemeBodyColor);
+/* 备份列表容器 */
+.backup_list_container {
+    margin-top: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
 }
 
-#chat-history-backup-settings label {
-    display: flex;
-    align-items: center;
-    margin-bottom: 8px;
+.backup_list_header {
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 8px 15px;
 }
 
-#chat-history-backup-settings input[type="checkbox"] {
-    margin-right: 8px;
+.backup_list_header h3 {
+    margin: 0;
+    font-size: 16px;
 }
 
-.backup-status-text {
-    font-size: 0.85em;
-    color: var(--SmartThemeSubtleColor);
-    margin-top: 5px;
-    min-height: 1.2em; /* Prevent layout shifts */
-}
-
-#chat-history-backup-refresh {
-    margin-bottom: 10px; /* Space below refresh button */
-    vertical-align: middle;
-}
-
-.backup-list-container {
-    max-height: 300px; /* Limit height and enable scroll */
+.backup_list {
+    max-height: 500px;
     overflow-y: auto;
-    border: 1px solid var(--SmartThemeBorderColor);
-    padding: 5px;
-    margin-top: 5px;
-    border-radius: 4px;
+    padding: 10px;
 }
 
-.chat-history-backup-item {
+/* 单个备份项目 */
+.backup_item {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start; /* Align items to the top */
-    padding: 8px 5px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-    font-size: 0.9em;
-}
-.chat-history-backup-item:last-child {
-    border-bottom: none;
-}
-
-.backup-details {
-    flex-grow: 1;
-    margin-right: 10px; /* Space between details and button */
-    overflow-wrap: break-word; /* Wrap long chat names */
-    word-break: break-word;
-}
-.backup-details strong {
-    color: var(--SmartThemeAccentColor); /* Highlight source name */
-}
-.backup-details em { /* Chat name */
-     color: var(--SmartThemeLinkColor);
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 10px;
+    background-color: rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: background-color 0.2s;
 }
 
-.backup-details small {
-    display: block; /* Ensure small tags are on new lines */
-    color: var(--SmartThemeSubtleColor);
-    line-height: 1.3;
+.backup_item:hover {
+    background-color: rgba(0, 0, 0, 0.25);
 }
-.backup-preview {
-    font-style: italic;
-    white-space: pre-wrap; /* Preserve whitespace in preview */
-    word-break: break-all; /* Break long words/urls in preview */
-    max-height: 4em; /* Limit preview height */
+
+.backup_info {
+    flex: 1;
     overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 3; /* Limit to 3 lines for preview */
-    -webkit-box-orient: vertical;
 }
 
-
-.backup-actions .menu_button {
-    padding: 4px 8px;
-    font-size: 0.9em;
-    white-space: nowrap; /* Prevent button text wrapping */
+.backup_header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 5px;
 }
 
-#chat-history-backup-list p {
-    padding: 10px;
+.backup_entity {
+    font-weight: bold;
+    color: var(--SmColor);
+}
+
+.backup_chat {
+    color: var(--infoCardText);
+}
+
+.backup_mesid, .backup_date {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.backup_preview {
+    font-style: italic;
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.backup_actions {
+    margin-left: 10px;
+}
+
+.backup_restore {
+    white-space: nowrap;
+}
+
+.backup_empty_notice {
     text-align: center;
-    color: var(--SmartThemeSubtleColor);
+    padding: 30px;
+    opacity: 0.6;
+    font-style: italic;
+}
+
+.chat_backup_description {
+    margin-bottom: 15px;
+    opacity: 0.8;
+    font-size: 0.95em;
+    line-height: 1.5;
 }
