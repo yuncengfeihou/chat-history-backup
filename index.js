@@ -30,11 +30,15 @@ const debouncedBackup = debounce(() => {
     const chatId = context.getCurrentChatId();
     if (!chatId) return;
 
+    // Use JSON.parse(JSON.stringify()) for deep cloning
+    const clonedChat = JSON.parse(JSON.stringify(chat));
+    const clonedMetadata = JSON.parse(JSON.stringify(chat_metadata));
+
     backupWorker.postMessage({
         type: 'backup',
         data: {
-            chat: structuredClone(chat),
-            metadata: structuredClone(chat_metadata),
+            chat: clonedChat,
+            metadata: clonedMetadata,
             chatId,
             maxBackups: extension_settings[extensionName].maxBackups
         }
