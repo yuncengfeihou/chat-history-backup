@@ -24,6 +24,21 @@
     padding: 10px;
 }
 
+/* 控制区域 */
+.chat_backup_controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
+
+.chat_backup_control_item {
+    margin: 5px;
+}
+
 /* 单个备份项目 */
 .backup_item {
     display: flex;
@@ -96,4 +111,15 @@
     opacity: 0.8;
     font-size: 0.95em;
     line-height: 1.5;
+}
+
+/* 复选框样式 */
+.checkbox_label {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.checkbox_label input[type="checkbox"] {
+    margin-right: 5px;
 }
