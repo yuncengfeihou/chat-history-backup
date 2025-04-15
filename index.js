@@ -1,57 +1,72 @@
-// public/extensions/third-party/global-chat-backup/index.js
+// public/extensions/third-party/chat-history-backup/index.js
 
 // ==========================================================
-// 1. Imports
+// 1. Import SillyTavern Modules and Functions
 // ==========================================================
+// Note: Adjust paths if your ST version differs significantly
+
+// From extensions.js
 import {
     getContext,
     extension_settings,
-    renderExtensionTemplateAsync, // Keep in case we use a template later
+    renderExtensionTemplateAsync // Optional, if using external HTML for UI
 } from '../../../extensions.js';
+
+// From script.js
 import {
     saveSettingsDebounced,
     eventSource,
     event_types,
-    chat,
-    chat_metadata,
-    getCurrentChatId,
-    clearChat,
-    printMessages,
-    reloadCurrentChat, // Good fallback on error
-    saveChatConditional,
-    selectCharacterById,
-    doNewChat,
-    name1, // User name (less relevant here)
-    name2, // Character name
-    this_chid, // Current character ID
-    characters, // All characters data
-    groups, // All groups data
-    selected_group, // Current group ID
-    openGroupById,
-    createNewGroupChat,
-    t, // i18n translation function
+    chat,                   // Current chat messages array
+    chat_metadata,          // Current chat metadata object
+    getCurrentChatId,       // Gets the ID of the current chat file/identifier
+    selectCharacterById,    // Function to switch to a character
+    openGroupById,          // Function to switch to a group
+    doNewChat,              // Function to create a new chat for the current character/group
+    // createNewGroupChat is often called internally by doNewChat or group-chats.js logic when a group is active.
+    // We might rely on doNewChat triggering the correct new chat creation based on context.
+    clearChat,              // Clears chat UI and array
+    printMessages,          // Renders messages from the chat array
+    reloadCurrentChat,      // Force reloads the current chat
+    saveChatConditional,    // Saves the current chat state if needed
+    name1 as userName,      // User's name
+    name2 as characterName, // Character's name (may be group name contextually)
+    this_chid as currentCharacterId, // Currently selected character index
+    selected_group as currentGroupId // Currently selected group ID
 } from '../../../../script.js';
-import { debounce } from '../../../utils.js';
+
+// From utils.js
+import { debounce, escapeHtml } from '../../../utils.js';
+
+// From constants.js
 import { debounce_timeout } from '../../../constants.js';
-import { POPUP_TYPE, callGenericPopup, POPUP_RESULT } from '../../../popup.js';
 
-// Make TypeScript/JSDoc aware of localforage if not explicitly imported
-declare var localforage: any;
+// From popup.js
+import { POPUP_TYPE, callGenericPopup } from '../../../popup.js';
+
+// From i18n.js
+import { t } from '../../../i18n.js';
+
+// Ensure localforage is available (usually loaded globally by ST)
+/** @type {import('localforage')} */
+declare var localforage; // Use declare for type hints without actual import if needed
 
 // ==========================================================
-// 2. Constants and Settings
+// 2. Plugin Constants and Settings
 // ==========================================================
-const extensionName = "global-chat-backup";
+const extensionName = "chat-history-backup"; // MUST match the folder name
 const defaultSettings = {
     isEnabled: true,
-    maxBackups: 3, // Global maximum backups
+    // maxBackups: 3, // This is now a hardcoded constant below
 };
-// Single storage key for the global list of backups
-const STORAGE_KEY = "st_global_chat_backups_list";
+// Global storage key for ALL backups
+const STORAGE_KEY = "st_global_chat_backups_v1"; // Added versioning
+const MAX_BACKUPS = 3; // Hardcoded max number of global backups
 const BACKUP_DEBOUNCE_TIME = debounce_timeout.long; // e.g., 2000ms
+const PREVIEW_LENGTH = 100; // Max characters for message preview
 
 // ==========================================================
-// 3. Load Settings
+// 3. Load Plugin Settings
 // ==========================================================
 async function loadSettings() {
     extension_settings[extensionName] = extension_settings[extensionName] || {};
@@ -61,8 +76,7 @@ async function loadSettings() {
     });
 
     // Update UI elements based on loaded settings
-    $('#global-backup-enabled').prop('checked', extension_settings[extensionName].isEnabled);
-    $('#global-backup-max').val(extension_settings[extensionName].maxBackups);
+    $('#chat-history-backup-enabled').prop('checked', extension_settings[extensionName].isEnabled);
 }
 
 // ==========================================================
@@ -72,440 +86,407 @@ async function performBackup() {
     const settings = extension_settings[extensionName];
     if (!settings.isEnabled) {
         console.log(`${extensionName}: Backup is disabled.`);
-        updateStatus(t('备份已禁用'));
+        updateStatusUI(t('备份已禁用'));
         return;
     }
 
-    const context = getContext();
-    const currentChatId = context.getCurrentChatId(); // Gets char file or group chat ID
+    const context = getContext(); // Get current context
+    let sourceType = null;
+    let sourceId = null;
+    let sourceName = null;
+    let currentChatName = null; // The identifier of the specific chat file/session
 
-    // Determine source type and ID
-    let sourceType: 'character' | 'group';
-    let sourceId: number | string | undefined;
-    let sourceName: string = t('未知来源');
-    let chatName: string = t('未知聊天');
-
-    if (context.selected_group !== null && context.selected_group !== undefined) {
+    // Determine if we are in a character chat or group chat
+    if (context.groupId) { // Check context first for group ID
         sourceType = 'group';
-        sourceId = context.selected_group;
-        const group = context.groups.find(g => g.id === sourceId);
-        if (group) {
-            sourceName = group.name;
-            chatName = group.chat_id; // The current chat ID for the group
-        }
-    } else if (context.characterId !== undefined) {
+        sourceId = context.groupId;
+        // Find group name - assuming groups array is accessible or use context if available
+        // Simplified: using a placeholder if direct access isn't straightforward
+        const group = context.groups?.find(g => g.id === sourceId);
+        sourceName = group ? group.name : t('未知群组');
+        currentChatName = group?.chat_id ?? t('未知聊天'); // Get current chat ID for the group
+    } else if (context.characterId !== undefined && context.characterId !== null) { // Check context for character ID
         sourceType = 'character';
         sourceId = context.characterId;
-        const character = context.characters[sourceId];
-        if (character) {
-            sourceName = character.name;
-            chatName = character.chat; // The current chat file name for the character
-        }
-    } else {
-        console.log(`${extensionName}: No active character or group selected, skipping backup.`);
-        updateStatus(t('无活动聊天'));
-        return; // No active chat source
+        sourceName = context.name2; // Get character name from context
+        // Find character to get the current chat file name
+        const character = context.characters?.[sourceId];
+        currentChatName = character?.chat ?? t('未知聊天');
     }
 
-    // Use global chat and metadata from context
-    const currentChat = context.chat;
-    const currentMetadata = context.chat_metadata;
-
-    if (!currentChat || currentChat.length === 0) {
-        console.log(`${extensionName}: Chat is empty for ${sourceName}, skipping backup.`);
-        updateStatus(t('聊天为空，跳过'));
+    if (!sourceType || sourceId === null || sourceId === undefined) {
+        console.log(`${extensionName}: No active character or group found, skipping backup.`);
+        updateStatusUI(t('无活动聊天'));
         return;
     }
 
-    updateStatus(t('准备备份...'));
-    console.log(`${extensionName}: Preparing backup for ${sourceType} ${sourceName} (ID: ${sourceId}) - Chat: ${chatName}`);
+    // Check if chat array exists and is not empty
+    const currentChat = context.chat; // Access chat via context
+    if (!currentChat || currentChat.length === 0) {
+        console.log(`${extensionName}: Chat is empty, skipping backup for ${sourceType} ${sourceId}.`);
+        updateStatusUI(t('聊天为空，跳过'));
+        return;
+    }
 
     // Deep copy chat and metadata
-    let chatCopy, metadataCopy;
+    let chatCopy;
+    let metadataCopy;
     try {
+        // Use structuredClone first (more efficient)
         chatCopy = structuredClone(currentChat);
-        metadataCopy = structuredClone(currentMetadata);
+        metadataCopy = structuredClone(context.chat_metadata); // Access metadata via context
     } catch (e) {
         console.warn(`${extensionName}: structuredClone failed, falling back to JSON method. Error: ${e}`);
         try {
             chatCopy = JSON.parse(JSON.stringify(currentChat));
-            metadataCopy = JSON.parse(JSON.stringify(currentMetadata));
+            metadataCopy = JSON.parse(JSON.stringify(context.chat_metadata));
         } catch (jsonError) {
-            console.error(`${extensionName}: Failed to deep copy chat data using JSON method. Aborting backup.`, jsonError);
-            toastr.error(t('无法复制聊天数据进行备份。'));
-            updateStatus(t('备份失败 (复制错误)'));
-            return;
+             console.error(`${extensionName}: Failed to deep copy chat data using JSON method. Aborting backup.`, jsonError);
+             updateStatusUI(t('数据拷贝失败!'));
+             toastr.error(t('无法备份聊天，数据拷贝失败。'), extensionName);
+             return;
         }
     }
 
-    // Get last message info
-    const lastMessageIndex = chatCopy.length - 1;
-    const lastMessage = chatCopy[lastMessageIndex];
-    const lastMessagePreview = lastMessage?.mes?.substring(0, 100) || t('[无消息内容]');
 
-    // Create the backup entry object
-    const backupEntry = {
+    // Get last message info
+    const lastMessage = chatCopy[chatCopy.length - 1];
+    const lastMessageId = chatCopy.length - 1;
+    let lastMessagePreview = '';
+    if (lastMessage && lastMessage.mes) {
+         // Basic preview: strip HTML and truncate
+         const tempDiv = document.createElement('div');
+         tempDiv.innerHTML = lastMessage.mes; // Let browser parse HTML
+         lastMessagePreview = (tempDiv.textContent || tempDiv.innerText || "").substring(0, PREVIEW_LENGTH);
+    }
+
+
+    // Build the backup object
+    const newBackup = {
         timestamp: Date.now(),
         sourceType: sourceType,
         sourceId: sourceId,
         sourceName: sourceName,
-        chatName: chatName,
-        lastMessageId: lastMessageIndex, // Store the index
-        lastMessagePreview: lastMessagePreview,
+        chatName: currentChatName,
+        lastMessageId: lastMessageId,
+        lastMessagePreview: escapeHtml(lastMessagePreview), // Escape preview for safe display
         chat: chatCopy,
         metadata: metadataCopy,
     };
+
+    console.log(`${extensionName}: Preparing backup for ${sourceType} ${sourceName} (${sourceId}), chat: ${currentChatName}`);
+    updateStatusUI(t('准备备份...'));
 
     try {
         // Get the current global backup list
         let backups = await localforage.getItem(STORAGE_KEY) || [];
         if (!Array.isArray(backups)) {
-            console.warn(`${extensionName}: Invalid data found for key ${STORAGE_KEY}, resetting backup list.`);
+            console.warn(`${extensionName}: Invalid data found for ${STORAGE_KEY}, resetting backup list.`);
             backups = [];
         }
 
         // Add the new backup to the beginning
-        backups.unshift(backupEntry);
+        backups.unshift(newBackup);
 
-        // Trim the list to the maximum allowed size
-        if (backups.length > settings.maxBackups) {
-            backups = backups.slice(0, settings.maxBackups);
+        // Truncate the list to MAX_BACKUPS
+        if (backups.length > MAX_BACKUPS) {
+            backups = backups.slice(0, MAX_BACKUPS);
         }
 
-        // Save the updated global list back to localForage
+        // Save the updated list back to localForage
         await localforage.setItem(STORAGE_KEY, backups);
-
         console.log(`${extensionName}: Backup successful. Total global backups: ${backups.length}`);
-        updateStatus(`${t('上次备份:')} ${new Date(backupEntry.timestamp).toLocaleTimeString()}`);
-        // Refresh the displayed list after successful backup
-        await displayBackups();
+        updateStatusUI(`${t('上次备份:')} ${new Date(newBackup.timestamp).toLocaleTimeString()}`);
 
-    } catch (error: any) {
+        // Refresh the displayed list if the settings panel is visible
+        displayBackups();
+
+    } catch (error) {
         console.error(`${extensionName}: Error performing backup:`, error);
-        updateStatus(t('备份失败!'));
+        toastr.error(`${t('备份聊天失败')}: ${error.message}`, `${extensionName}`);
+        updateStatusUI(t('备份失败!'));
 
-        if (error && error.name === 'QuotaExceededError') {
-            toastr.error(t('浏览器存储空间已满，无法保存备份。插件已自动禁用。'), t('备份失败'));
-            // Disable the plugin automatically
-            extension_settings[extensionName].isEnabled = false;
-            $('#global-backup-enabled').prop('checked', false);
+        // Handle QuotaExceededError specifically
+        if (error && (error.name === 'QuotaExceededError' || error.message.includes('quota'))) {
+            settings.isEnabled = false;
+            $('#chat-history-backup-enabled').prop('checked', false);
             saveSettingsDebounced();
-            updateStatus(t('备份已禁用 (存储空间已满)'));
-            // Also refresh display to show the disabled state properly
-            await displayBackups(); // Refresh list to show it might be empty/stale
-        } else {
-            toastr.error(`${t('备份聊天失败')}: ${error.message}`, `${extensionName}`);
+            callGenericPopup(t('浏览器存储空间已满，聊天备份插件已被禁用。请清理浏览器存储或手动删除旧备份。'), POPUP_TYPE.TEXT);
+            updateStatusUI(t('存储已满，已禁用'));
         }
     }
 }
 
 // ==========================================================
-// 5. Debounce and Trigger
+// 5. Debounced Trigger
 // ==========================================================
 const debouncedBackup = debounce(performBackup, BACKUP_DEBOUNCE_TIME);
 
 function triggerBackup() {
     if (extension_settings[extensionName]?.isEnabled) {
-        // console.debug(`${extensionName}: Backup triggered, debouncing...`); // Optional: Can be spammy
+        console.debug(`${extensionName}: Backup triggered, debouncing...`);
+        updateStatusUI(t('检测到活动，准备备份...'));
         debouncedBackup();
     }
+}
+
+// Helper to update status text
+function updateStatusUI(message) {
+    $('#chat-history-backup-status').text(message);
 }
 
 // ==========================================================
 // 6. Display Backups in UI
 // ==========================================================
 async function displayBackups() {
-    const listContainer = $('#global-backup-list-container');
-    listContainer.empty().append(`<p><em>${t('正在加载备份...')}</em></p>`); // Loading indicator
+    const container = $('#chat-history-backup-list');
+    if (!container.length) return; // Don't proceed if container not found
+
+    container.html(`<p><em>${t('正在加载备份列表...')}</em></p>`); // Loading indicator
 
     try {
         const backups = await localforage.getItem(STORAGE_KEY) || [];
-        listContainer.empty(); // Clear loading indicator
+        if (!Array.isArray(backups)) {
+             console.warn(`${extensionName}: Invalid backup data found in storage.`);
+             container.html(`<p>${t('无法加载备份，数据格式错误。')}</p>`);
+             return;
+        }
 
-        if (!Array.isArray(backups) || backups.length === 0) {
-            listContainer.append(`<p>${t('没有可用的全局备份。')}</p>`);
+        if (backups.length === 0) {
+            container.html(`<p>${t('没有可用的本地备份记录。')}</p>`);
             return;
         }
 
+        let listHtml = '';
         backups.forEach((backup, index) => {
-            const dateStr = new Date(backup.timestamp).toLocaleString();
-            const sourceTypeText = backup.sourceType === 'character' ? t('角色') : t('群组');
-            const mesCount = backup.chat?.length ?? 0;
+            const dateTime = new Date(backup.timestamp).toLocaleString();
+            const sourceInfo = `${escapeHtml(backup.sourceName)} (${backup.sourceType === 'group' ? t('群组') : t('角色')})`;
+            const chatInfo = `${escapeHtml(backup.chatName)}`;
+            const messageCount = backup.chat?.length ?? 0;
 
-            // Sanitize preview text just in case
-            const previewText = $('<div>').text(backup.lastMessagePreview).html(); // Basic sanitization
-
-            const entryHtml = `
-                <div class="global-backup-entry">
-                    <div class="global-backup-entry-info">
-                        <div class="backup-details">
-                            <strong>${sourceTypeText}:</strong> ${backup.sourceName || t('未知名称')} <br/>
-                            <strong>${t('聊天')}:</strong> ${backup.chatName || t('未知聊天')} (${mesCount} ${t('条')})<br/>
-                            <strong>${t('时间')}:</strong> ${dateStr}
-                        </div>
-                        <div class="backup-preview">${previewText}...</div>
+            listHtml += `
+                <div class="chat-history-backup-item">
+                    <div class="backup-details">
+                        <strong>${sourceInfo}</strong> - <em>${chatInfo}</em><br>
+                        <small>${dateTime} (${messageCount} ${t('条消息')}, ID: ${backup.lastMessageId})</small><br>
+                        <small class="backup-preview">${t('预览:')} ${backup.lastMessagePreview}...</small>
                     </div>
-                    <button class="menu_button restore-backup" data-backup-index="${index}" title="${t('恢复此备份到一个新聊天')}">
-                        <i class="fa-solid fa-upload"></i> ${t('恢复')}
-                    </button>
+                    <div class="backup-actions">
+                        <button class="menu_button restore-backup-button" data-backup-index="${index}" title="${t('恢复此备份到新聊天')}">
+                            <i class="fa-solid fa-upload"></i> ${t('恢复')}
+                        </button>
+                    </div>
                 </div>
             `;
-            listContainer.append(entryHtml);
         });
 
+        container.html(listHtml);
+
     } catch (error) {
-        console.error(`${extensionName}: Error loading backups for display:`, error);
-        listContainer.empty().append(`<p style="color: red;">${t('加载备份列表失败。')}</p>`);
+        console.error(`${extensionName}: Error displaying backups:`, error);
+        container.html(`<p>${t('加载备份列表时出错。')}</p>`);
+        toastr.error(t('加载备份列表失败。'), extensionName);
     }
 }
 
 // ==========================================================
-// 7. Restore Function
+// 7. Restore Functionality
 // ==========================================================
-async function restoreBackup(index: number) {
-    updateStatus(t('准备恢复...'));
+async function restoreBackup(backupIndex) {
+    if (isNaN(backupIndex) || backupIndex < 0) {
+        toastr.error(t('无效的备份索引。'), extensionName);
+        return;
+    }
+
+    let backups = [];
     try {
-        const backups = await localforage.getItem(STORAGE_KEY) || [];
-        if (!Array.isArray(backups) || index < 0 || index >= backups.length) {
-            toastr.error(t('无法找到选定的备份。'));
-            updateStatus(t('恢复失败 (无效索引)'));
+        backups = await localforage.getItem(STORAGE_KEY) || [];
+    } catch (error) {
+        console.error(`${extensionName}: Failed to retrieve backups for restore:`, error);
+        toastr.error(t('获取备份数据失败。'), extensionName);
+        return;
+    }
+
+    if (backupIndex >= backups.length) {
+        toastr.error(t('备份索引超出范围，请刷新列表。'), extensionName);
+        displayBackups(); // Refresh the list as it might be outdated
+        return;
+    }
+
+    const backupData = backups[backupIndex];
+
+    if (!backupData || !backupData.chat || !backupData.metadata || !backupData.sourceType || backupData.sourceId === undefined) {
+        toastr.error(t('备份数据无效或不完整，无法恢复。'), extensionName);
+        return;
+    }
+
+    const confirmMessage = `
+        <h4>${t('确认恢复备份')}</h4>
+        <p>${t('将为 <strong>{sourceName}</strong> ({sourceType}) 创建一个新的聊天会话，并将 {dateTime} 的备份内容恢复到其中。').replace('{sourceName}', escapeHtml(backupData.sourceName)).replace('{sourceType}', backupData.sourceType === 'group' ? t('群组') : t('角色')).replace('{dateTime}', new Date(backupData.timestamp).toLocaleString())}</p>
+        <p><strong>${t('当前打开的聊天不会被覆盖，但您需要切换到新创建的聊天。')}</strong></p>
+        <p><small>${t('此操作会保存角色/群组信息以指向新聊天。')}</small></p>
+    `;
+
+    try {
+        // Confirm with the user
+        const userConfirmed = await callGenericPopup(confirmMessage, POPUP_TYPE.CONFIRM);
+        if (!userConfirmed) {
+            console.log(`${extensionName}: Restore cancelled by user.`);
             return;
         }
 
-        const backupData = backups[index];
+        toastr.info(t('正在准备恢复环境...'), extensionName);
+        console.log(`${extensionName}: Starting restore for backup from ${new Date(backupData.timestamp).toLocaleString()}`);
 
-        if (!backupData || !backupData.chat || !backupData.metadata || !backupData.sourceId || !backupData.sourceType) {
-            toastr.error(t('备份数据无效或不完整，无法恢复。'));
-            updateStatus(t('恢复失败 (数据无效)'));
-            console.error(`${extensionName}: Invalid backup data at index ${index}`, backupData);
-            return;
+        // 1. Switch context to the source character/group
+        console.log(`${extensionName}: Switching context to ${backupData.sourceType} ${backupData.sourceId}`);
+        if (backupData.sourceType === 'character') {
+            await selectCharacterById(backupData.sourceId);
+        } else if (backupData.sourceType === 'group') {
+            await openGroupById(backupData.sourceId);
+        } else {
+            throw new Error(`Unknown sourceType: ${backupData.sourceType}`);
         }
+        // Short delay to allow context switching to potentially complete UI updates
+        await new Promise(resolve => setTimeout(resolve, 200));
+        console.log(`${extensionName}: Context switched.`);
 
-        // Confirmation Popup
-        const confirm = await callGenericPopup(
-            `<h4>${t('确认恢复?')}</h4>
-             <p>${t('这将首先切换到 {sourceType} "{sourceName}"，然后为其创建一个全新的聊天会话，并将备份内容恢复到该新会话中。', { sourceType: backupData.sourceType === 'character' ? t('角色') : t('群组'), sourceName: backupData.sourceName })}</p>
-             <p><strong>${t('备份时间:')}</strong> ${new Date(backupData.timestamp).toLocaleString()}</p>
-             <p style="color: var(--SmartThemeWarnColor);">${t('当前聊天（如果存在）不会被覆盖，但您需要手动切换回。')}</p>`,
-            POPUP_TYPE.CONFIRM,
-            undefined, // No default value for confirm
-            { okButton: t('确认恢复'), cancelButton: t('取消') }
-        );
+        // 2. Create a new chat for the current character/group
+        console.log(`${extensionName}: Creating new chat...`);
+        // doNewChat handles both character and group cases based on current context
+        await doNewChat();
+        // Short delay to allow new chat creation and initial loading
+        await new Promise(resolve => setTimeout(resolve, 300));
+        console.log(`${extensionName}: New chat created.`);
 
-        if (!confirm) {
-            updateStatus(t('恢复已取消'));
-            return;
-        }
+        // 3. Inject the backed-up data into the *current* global chat variables
+        //    (which should now belong to the newly created chat)
+        console.log(`${extensionName}: Injecting backup data...`);
+        // Clear existing chat array and replace with backup chat content
+        chat.splice(0, chat.length, ...backupData.chat);
+        // Clear existing metadata and assign backup metadata
+        // Need to get a reference to the actual global chat_metadata, context might be stale after async ops
+        const globalMetadata = getContext().chat_metadata; // Re-fetch context's metadata ref
+        Object.keys(globalMetadata).forEach(key => delete globalMetadata[key]);
+        Object.assign(globalMetadata, backupData.metadata);
 
-        updateStatus(t('正在恢复: 切换上下文...'));
-        console.log(`${extensionName}: Starting restore for backup index ${index}`);
+        // 4. Re-render the chat messages
+        console.log(`${extensionName}: Rendering messages...`);
+        await printMessages(true); // true for full refresh, handles showMoreMessages logic internally
+        console.log(`${extensionName}: Messages rendered.`);
 
-        // --- Step 1: Switch context ---
-        try {
-            if (backupData.sourceType === 'character') {
-                await selectCharacterById(backupData.sourceId);
-            } else { // sourceType === 'group'
-                await openGroupById(backupData.sourceId);
-            }
-            // Brief pause to allow context switch to settle (might not be strictly needed)
-            await new Promise(resolve => setTimeout(resolve, 200));
-            console.log(`${extensionName}: Context switched to ${backupData.sourceType} ${backupData.sourceId}`);
-        } catch (switchError) {
-             console.error(`${extensionName}: Error switching context during restore:`, switchError);
-             toastr.error(t('切换到目标角色/群组时出错。无法继续恢复。'));
-             updateStatus(t('恢复失败 (切换错误)'));
-             return;
-        }
+        // 5. Save the newly created and populated chat state
+        console.log(`${extensionName}: Saving restored chat state...`);
+        await saveChatConditional(); // Saves the current state (which is the restored state)
+        console.log(`${extensionName}: Restored chat state saved.`);
 
-        // --- Step 2: Create a new chat for the context ---
-        updateStatus(t('正在恢复: 创建新聊天...'));
-        let newChatName = '';
-        try {
-            if (backupData.sourceType === 'character') {
-                // doNewChat handles saving the character with the new chat file name
-                await doNewChat();
-                newChatName = characters[backupData.sourceId as number]?.chat; // Get the newly created chat name
-            } else { // sourceType === 'group'
-                // createNewGroupChat handles saving the group with the new chat id
-                await createNewGroupChat(backupData.sourceId);
-                newChatName = groups.find(g => g.id === backupData.sourceId)?.chat_id; // Get the newly created chat id
-            }
-            // Wait for the new chat creation and initial load (getChat/getGroupChat) to finish
-            await new Promise(resolve => setTimeout(resolve, 300)); // Increased delay slightly
-            console.log(`${extensionName}: New chat created: ${newChatName}`);
-        } catch (newChatError) {
-            console.error(`${extensionName}: Error creating new chat during restore:`, newChatError);
-            toastr.error(t('创建新聊天时出错。无法继续恢复。'));
-            updateStatus(t('恢复失败 (创建错误)'));
-            return;
-        }
-
-
-        // --- Step 3: Inject backed up data ---
-        updateStatus(t('正在恢复: 注入数据...'));
-        try {
-            // Clear potentially existing initial message(s) in the new chat
-            chat.length = 0;
-            // Inject messages (make sure backupData.chat is the array)
-            chat.splice(0, 0, ...backupData.chat);
-
-            // Inject metadata
-            Object.keys(chat_metadata).forEach(key => delete chat_metadata[key]); // Clear existing keys
-            Object.assign(chat_metadata, backupData.metadata); // Assign restored metadata
-
-            console.log(`${extensionName}: Data injected. ${chat.length} messages.`);
-        } catch (injectError) {
-            console.error(`${extensionName}: Error injecting data during restore:`, injectError);
-            toastr.error(t('将备份数据注入新聊天时出错。'));
-            updateStatus(t('恢复失败 (注入错误)'));
-            return;
-        }
-
-
-        // --- Step 4: Re-render the chat UI ---
-        updateStatus(t('正在恢复: 渲染消息...'));
-        try {
-            await printMessages(true); // Force full refresh, handles 'show more' logic
-            console.log(`${extensionName}: Chat rendered.`);
-        } catch (renderError) {
-            console.error(`${extensionName}: Error rendering messages during restore:`, renderError);
-            toastr.error(t('渲染恢复的消息时出错。'));
-            // Continue to saving step, UI might be broken but data might be saved
-        }
-
-
-        // --- Step 5: Save the newly restored state ---
-        updateStatus(t('正在恢复: 保存状态...'));
-        try {
-            await saveChatConditional(); // Save the new chat with restored content
-            console.log(`${extensionName}: Restored chat saved.`);
-        } catch (saveError) {
-            console.error(`${extensionName}: Error saving restored chat:`, saveError);
-            toastr.error(t('保存恢复后的聊天状态时出错。'));
-            // Restore technically finished, but saving failed
-        }
-
-        toastr.success(t('聊天已从备份恢复到新的会话中！'));
-        updateStatus(t('恢复成功'));
-
+        toastr.success(t('备份已成功恢复到新的聊天会话中！'), extensionName);
 
     } catch (error) {
-        console.error(`${extensionName}: Unexpected error during restore process:`, error);
-        toastr.error(t('恢复过程中发生意外错误。'));
-        updateStatus(t('恢复失败 (未知错误)'));
-        // Attempt to reload the original chat as a fallback? Maybe too risky.
+        console.error(`${extensionName}: Error during restore process:`, error);
+        toastr.error(`${t('恢复过程中发生错误')}: ${error.message}`, extensionName);
+        // Optionally try to reload the original state before restore attempt
         // await reloadCurrentChat();
     }
 }
 
-// ==========================================================
-// 8. UI Update Helper
-// ==========================================================
-function updateStatus(message: string) {
-    $('#global-backup-status').text(message);
-}
 
 // ==========================================================
-// 9. Plugin Initialization
+// 8. Plugin Initialization (jQuery Ready)
 // ==========================================================
 jQuery(async () => {
-    // --- 1. Create settings UI ---
+    // --- 1. Create Plugin Settings UI HTML ---
     const settingsHtml = `
-        <div id="global-backup-settings" class="inline-drawer">
+        <div id="chat-history-backup-settings" class="inline-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-                <b>${t('全局聊天备份')}</b>
+                <b>${t('聊天历史备份 (全局)')}</b>
                 <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
-                <label for="global-backup-enabled">
-                    <input type="checkbox" id="global-backup-enabled">
-                    ${t('启用自动备份')}
+                <label for="chat-history-backup-enabled">
+                    <input type="checkbox" id="chat-history-backup-enabled">
+                    ${t('启用自动备份 (最近 {count} 条记录)').replace('{count}', MAX_BACKUPS)}
                 </label>
-                <label for="global-backup-max" style="margin-top: 5px;">
-                    ${t('最多保留全局备份数:')}
-                    <input type="number" id="global-backup-max" min="1" max="10" class="text_pole" style="width: 50px;">
-                </label>
-                <div id="global-backup-status" style="font-size: 0.9em; color: var(--SmartThemeSubtleColor); margin-top: 5px;">${t('正在初始化...')}</div>
-                <button id="global-backup-refresh" class="menu_button" style="margin-top: 10px;">
-                    <i class="fa-solid fa-arrows-rotate"></i> ${t('刷新备份列表')}
-                </button>
-                <div id="global-backup-list-container">
-                    ${t('正在加载备份...')}
-                </div>
+                <div id="chat-history-backup-status" class="backup-status-text">${t('正在初始化...')}</div>
+
+                <hr>
+                <h4>${t('已保存的备份记录')}</h4>
+                 <button id="chat-history-backup-refresh" class="menu_button small_button" title="${t('刷新列表')}">
+                     <i class="fa-solid fa-arrows-rotate"></i> ${t('刷新')}
+                 </button>
+                 <div id="chat-history-backup-list" class="backup-list-container">
+                     ${/* Content will be loaded by displayBackups() */}
+                 </div>
                  <hr class="sysHR">
-                <small>${t('备份存储在浏览器本地。清理浏览器缓存或站点数据会删除所有备份。仅保留全局最新的 N 条备份。')}</small>
+                 <small>${t('备份存储在浏览器本地 (IndexedDB)。清理浏览器数据可能会删除备份。全局最多保留 {count} 条最新备份。').replace('{count}', MAX_BACKUPS)}</small>
             </div>
         </div>
     `;
 
-    // --- 2. Inject UI ---
+    // --- 2. Inject HTML into Settings Page ---
+    // Common targets: #extensions_settings, #settings_extensions, #extension_settings_lower_zone
+    // Check your ST version's DOM structure. Using a common one here.
     $('#extensions_settings').append(settingsHtml);
 
-    // --- 3. Load settings and initial display ---
+    // --- 3. Load Settings ---
     await loadSettings();
-    updateStatus(extension_settings[extensionName].isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
-    await displayBackups(); // Load and display backups on startup
+    updateStatusUI(extension_settings[extensionName].isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
 
-    // --- 4. Bind UI event listeners ---
-    $('#global-backup-enabled').on('change', async function () {
+    // --- 4. Bind UI Event Listeners ---
+    // Enable/Disable Checkbox
+    $('#chat-history-backup-enabled').on('change', function () {
         extension_settings[extensionName].isEnabled = $(this).prop('checked');
         saveSettingsDebounced();
-        updateStatus(extension_settings[extensionName].isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
+        updateStatusUI(extension_settings[extensionName].isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
         if (extension_settings[extensionName].isEnabled) {
-            triggerBackup(); // Trigger a backup check if just enabled
-        }
-        await displayBackups(); // Refresh display in case status matters
-    });
-
-    $('#global-backup-max').on('input', function() { // Use 'input' for immediate feedback
-        let value = parseInt($(this).val() as string, 10);
-        if (isNaN(value) || value < 1) value = 1;
-        if (value > 10) value = 10; // Hard limit for sanity
-        // No need to update val immediately if using 'input'
-        extension_settings[extensionName].maxBackups = value;
-        saveSettingsDebounced();
-        // Optionally, trigger a backup or cleanup immediately if number decreases?
-        // Maybe too complex, let natural backup cycle handle trimming.
-    }).on('change', function() { // Ensure value is correct on blur/enter
-        $(this).val(extension_settings[extensionName].maxBackups);
-    });
-
-
-    $('#global-backup-refresh').on('click', displayBackups);
-
-    // Event delegation for restore buttons
-    $('#global-backup-list-container').on('click', '.restore-backup', function () {
-        const index = parseInt($(this).data('backup-index'), 10);
-        if (!isNaN(index)) {
-            restoreBackup(index);
+            triggerBackup(); // Trigger a backup check when enabled
         } else {
-            console.error(`${extensionName}: Invalid backup index on button.`);
-            toastr.error(t('无法读取备份索引。'));
+             // Cancel any pending debounced backup if disabled
+             if (typeof debouncedBackup.cancel === 'function') {
+                 debouncedBackup.cancel();
+                 updateStatusUI(t('备份已禁用'));
+             }
         }
     });
 
-    // --- 5. Register SillyTavern event listeners ---
+    // Refresh Button
+    $('#chat-history-backup-refresh').on('click', displayBackups);
+
+    // Restore Button (Event Delegation)
+    // Listen on a static parent element (#extensions_settings or body)
+    $('#extensions_settings').on('click', '.restore-backup-button', function () {
+        const backupIndex = parseInt($(this).data('backup-index'), 10);
+        restoreBackup(backupIndex);
+    });
+
+    // --- 5. Load Initial Backup List ---
+    displayBackups();
+
+    // --- 6. Register SillyTavern Event Listeners for Auto-Backup ---
     const eventsToTriggerBackup = [
         event_types.MESSAGE_SENT,
         event_types.GENERATION_ENDED,
         event_types.MESSAGE_SWIPED,
         event_types.MESSAGE_EDITED,
         event_types.MESSAGE_DELETED,
+        // Add other relevant events if needed, e.g., world info updates might change context
+        // event_types.WORLDINFO_UPDATED
     ];
     eventsToTriggerBackup.forEach(eventType => {
         eventSource.on(eventType, triggerBackup);
     });
 
-    // Handle chat switching
-    eventSource.on(event_types.CHAT_CHANGED, () => {
-        // Cancel any pending backup from the *previous* chat context
-        if (typeof debouncedBackup.cancel === 'function') {
-            debouncedBackup.cancel();
-        }
-        updateStatus(extension_settings[extensionName]?.isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
-        // No need to refresh display here, backups are global
-    });
+    // Optionally cancel pending backup on chat change
+     eventSource.on(event_types.CHAT_CHANGED, () => {
+         if (typeof debouncedBackup.cancel === 'function') {
+             debouncedBackup.cancel();
+             console.debug(`${extensionName}: Chat changed, cancelled pending backup.`);
+         }
+         // Update status based on current setting after chat change
+         updateStatusUI(extension_settings[extensionName]?.isEnabled ? t('等待聊天活动...') : t('备份已禁用'));
+     });
 
-    // --- 6. Final Log ---
-    console.log(`插件 ${extensionName} 已加载并初始化。`);
+
+    // --- 7. Plugin Load Completion Log ---
+    console.log(`Plugin ${extensionName} loaded.`);
 }); // jQuery Ready End
