@@ -1,14 +1,79 @@
-#backup-list {
-    max-height: 300px;
-    overflow-y: auto;
-    margin: 10px 0;
-}
-
-.backup-item {
+.chat_history_settings {
     padding: 10px;
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    margin-bottom: 15px;
 }
 
-.restore-btn {
+.chat_history_status {
+    margin-top: 10px;
+    font-style: italic;
+    color: var(--grey75);
+}
+
+.backup_records_title {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 15px 0 10px 10px;
+}
+
+.chat_history_records_container {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 0 10px;
+}
+
+.no_records_message {
+    color: var(--grey75);
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+
+.backup_record {
+    border: 1px solid var(--grey25);
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background-color: var(--black05);
+}
+
+.backup_record_header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.backup_record_title {
+    font-weight: bold;
+}
+
+.backup_record_time {
+    color: var(--grey75);
+    font-size: 0.9em;
+}
+
+.backup_record_preview {
+    color: var(--grey90);
+    margin: 5px 0;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.backup_record_actions {
+    text-align: right;
     margin-top: 5px;
+}
+
+.restore_button {
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.restore_button:hover {
+    background-color: var(--accent-hover);
 }
