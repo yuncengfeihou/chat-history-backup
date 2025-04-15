@@ -47,10 +47,6 @@ import { debounce } from '../../../utils.js';
 import { debounce_timeout } from '../../../constants.js';
 import { POPUP_TYPE, callGenericPopup } from '../../../popup.js';
 
-// 假设 localforage 和 toastr 在 ST 环境中全局可用
-// 通过 declare 告诉 TypeScript 或 JSDoc 它们的存在
-declare var localforage: any;
-declare var toastr: any;
 
 // ==========================================================
 // 2. 插件常量与设置
