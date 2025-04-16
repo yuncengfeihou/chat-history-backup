@@ -531,18 +531,30 @@ async function restoreBackup(backupData) {
 
 // 更新插件设置页面UI
 async function updateBackupsList() {
-    logDebug('更新备份列表UI');
+    console.log('[聊天自动备份] 开始更新备份列表UI');
     const backupsContainer = $('#chat_backup_list');
+    
+    // 添加详细的调试信息
+    console.log('[聊天自动备份] 备份列表容器查找结果:', {
+        found: backupsContainer.length > 0,
+        element: backupsContainer[0]
+    });
+    
     if (!backupsContainer.length) {
         console.warn('[聊天自动备份] 找不到备份列表容器元素 #chat_backup_list');
         return;
     }
     
-    backupsContainer.empty();
+    // 显示加载中状态
+    backupsContainer.html('<div class="backup_empty_notice">正在加载备份...</div>');
     
     try {
         // 获取所有备份
         const allBackups = await getAllBackups();
+        console.log('[聊天自动备份] 获取到备份数据:', allBackups);
+        
+        // 清空容器准备添加新内容
+        backupsContainer.empty();
         
         // 按时间降序排序
         allBackups.sort((a, b) => b.timestamp - a.timestamp);
@@ -579,8 +591,40 @@ async function updateBackupsList() {
             backupsContainer.append(backupItem);
         });
         
-        // 为恢复按钮绑定事件
-        $('.backup_restore').on('click', async function() {
+        console.log('[聊天自动备份] 备份列表渲染完成');
+    } catch (error) {
+        console.error('[聊天自动备份] 更新备份列表失败:', error);
+        backupsContainer.html(`<div class="backup_empty_notice">加载备份列表失败: ${error.message}</div>`);
+    }
+}
+
+// 初始化插件
+jQuery(async () => {
+    console.log('[聊天自动备份] 插件加载中...');
+    
+    // 初始化设置
+    const settings = initSettings();
+    
+    try {
+        // 初始化数据库
+        await initDatabase();
+        
+        // 加载插件UI
+        const settingsHtml = await renderExtensionTemplateAsync(
+            `third-party/${PLUGIN_NAME}`, 
+            'settings'
+        );
+        
+        // 将设置UI添加到扩展页面
+        $('#extensions_settings').append(settingsHtml);
+        console.log('[聊天自动备份] 已添加设置界面到扩展页面');
+        
+        // 改为事件委托方式绑定按钮点击事件，避免DOM加载时序问题
+        $(document).off('click', '#chat_backup_manual_backup').on('click', '#chat_backup_manual_backup', performManualBackup);
+        console.log('[聊天自动备份] 已绑定手动备份按钮点击事件（使用事件委托）');
+        
+        // 为恢复按钮添加事件委托绑定
+        $(document).off('click', '.backup_restore').on('click', '.backup_restore', async function() {
             const timestamp = parseInt($(this).data('timestamp'));
             const chatKey = $(this).data('key');
             
@@ -625,48 +669,22 @@ async function updateBackupsList() {
                 toastr.error('恢复过程中出错');
             }
         });
-    } catch (error) {
-        console.error('[聊天自动备份] 更新备份列表失败:', error);
-        backupsContainer.append(`<div class="backup_empty_notice">加载备份列表失败: ${error.message}</div>`);
-    }
-}
-
-// 初始化插件
-jQuery(async () => {
-    console.log('[聊天自动备份] 插件加载中...');
-    
-    // 初始化设置
-    const settings = initSettings();
-    
-    try {
-        // 初始化数据库
-        await initDatabase();
         
-        // 加载插件UI
-        const settingsHtml = await renderExtensionTemplateAsync(
-            `third-party/${PLUGIN_NAME}`, 
-            'settings'
-        );
-        
-        // 将设置UI添加到扩展页面
-        $('#extensions_settings').append(settingsHtml);
-        console.log('[聊天自动备份] 已添加设置界面到扩展页面');
-        
-        // 初始化备份列表
-        await updateBackupsList();
-        
-        // 为调试开关添加事件处理
-        $('#chat_backup_debug_toggle').on('change', function() {
+        // 为调试开关添加事件委托处理
+        $(document).off('change', '#chat_backup_debug_toggle').on('change', '#chat_backup_debug_toggle', function() {
             settings.debug = $(this).prop('checked');
             console.log('[聊天自动备份] 调试模式已' + (settings.debug ? '启用' : '禁用'));
             saveSettingsDebounced();
         });
         
-        // 更新调试开关状态
-        $('#chat_backup_debug_toggle').prop('checked', settings.debug);
-        
-        // 为手动备份按钮添加事件处理
-        $('#chat_backup_manual_backup').on('click', performManualBackup);
+        // 延迟一下初始化，确保DOM完全加载
+        setTimeout(async () => {
+            // 初始化备份列表
+            await updateBackupsList();
+            
+            // 更新调试开关状态
+            $('#chat_backup_debug_toggle').prop('checked', settings.debug);
+        }, 500);
         
         // 创建防抖动的备份函数
         const debouncedBackup = createDebouncedBackup();
@@ -710,9 +728,9 @@ jQuery(async () => {
         });
         
         // 每次扩展页面打开时刷新备份列表
-        $('#extensionsMenuButton').on('click', () => {
+        $(document).off('click', '#extensionsMenuButton').on('click', '#extensionsMenuButton', () => {
             console.log('[聊天自动备份] 扩展菜单被点击，准备刷新备份列表');
-            setTimeout(updateBackupsList, 100);
+            setTimeout(updateBackupsList, 300); // 增加延迟确保DOM已加载
         });
         
         // 执行初始备份
